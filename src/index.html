@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <title>Document</title>
+</head>
+
+<body>
+    <input type="button" id="btn">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        
+        socket.on("connect", () => {
+            const urlParams = new URLSearchParams(location.search)
+            if (urlParams.get("game"))
+            {
+                socket.emit("joinGame", urlParams.get("game"))
+            }
+        })
+
+        socket.on("urlParams", params => {
+            history.replaceState(null, null, params)
+            const urlParams = new URLSearchParams(location.search)
+            socket.emit("joinGame", urlParams.get("game"))
+        })
+
+        socket.on("invalidGameId", () => {
+            console.log(true)
+            location.search = ""
+            
+        })
+
+        document.getElementById("btn").onclick = () => {
+            socket.emit("creteNewGame")
+        }
+        
+    </script>
+</body>
+
+</html>
