@@ -57,6 +57,7 @@ app.post('/joinRoom', (req, res) => {
 class User {
     constructor({ userID }) {
         this.userID = userID
+        this.roomID = ''
     }
 }
 
@@ -69,47 +70,43 @@ io.on('connection', socket => {
 
     socket.on('createUser', userID => {
         users.set(socket.id, new User({ userID }))
-        //console.log(users)
     })
 
     socket.on('joinRoom', (roomID, userID) => {
         socket.join(roomID);
+        users.get(socket.id).roomID = roomID
 
-        updateRooms()
+        updateRooms(roomID)
     });
 
     socket.on('leaveRoom', (roomID, userID) => {
         socket.leave(roomID);
+        users.get(socket.id).roomID = ''
 
-        updateRooms()
+        updateRooms(roomID)
     });
 
     socket.on('disconnect', () => {
-        //console.log('A user disconnected');
+        const roomID = users.get(socket.id).roomID
         users.delete(socket.id)
-        updateRooms()
+        updateRooms(roomID)
     });
 });
 
-const updateRooms = () => {
-    for (const [key, value] of rooms) {
-        for (const [usersKey, usersValue] of value.users) {
-            if (!users.has(usersKey)) {
-                value.users.delete(usersKey)
-                if (users.size == 0) {
-                    rooms.delete(key)
+const updateRooms = roomID => {
+    if (rooms.has(roomID)) {
+        const roomUsers = rooms.get(roomID).users
+        for (const key of roomUsers.keys()) {
+            if (!users.has(key)) {
+                rooms.get(roomID).users.delete(key)
+                if (roomUsers.size == 0) {
+                    rooms.delete(roomID)
                 }
             }
+            io.to(key).emit('updateRoom', { id: roomID, users: Object.fromEntries(roomUsers) });
         }
     }
-    for (const [key, value] of rooms) {
-        io.to(key).emit('updateRoom', { id: key, users: Object.fromEntries(value.users) });
-    }
 }
-
-setInterval(() => {
-    //console.log(rooms)
-}, 1000)
 
 server.listen(3000, () => {
     console.log('http://localhost:3000');
