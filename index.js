@@ -4,8 +4,6 @@ const http = require("http")
 const { emitWarning } = require("process")
 const { Server } = require("socket.io")
 //const fs = require("fs")
-const cookieParser = require("cookie-parser")
-
 const app = express()
 const server = http.createServer(app)
 const io = new Server(server, { pingInterval: 2000, pingTimeout: 5000 })
