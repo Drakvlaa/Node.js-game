@@ -13,7 +13,6 @@ socket.on('connect', () => {
 socket.on('updateRoom', data => {
     document.getElementById('roomID').innerHTML = data.id
     let playersList = ""
-    console.log(data.users)
     for (const id in data.users) {
         playersList += id + "<br>"
     }
@@ -40,7 +39,7 @@ const joinRoom = async roomID => {
         body: JSON.stringify({ roomID: roomID.roomID, socketID: socket.id })
     })
 
-    socket.emit('joinRoom', roomID, getCookie('id'))
+    socket.emit('joinRoom', roomID.roomID, getCookie('id'))
 }
 
 document.getElementById('createRoom').onclick = () => {

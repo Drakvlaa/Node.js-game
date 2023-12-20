@@ -18,10 +18,6 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'src', 'index.html'));
 });
 
-app.get('/cookies', (req, res) => {
-    res.send(req.cookies);
-});
-
 app.get('/:file', (req, res) => {
     const fileName = req.params.file;
     const filePath = path.join(__dirname, 'src', fileName);
@@ -106,10 +102,9 @@ const updateRooms = () => {
             }
         }
     }
-
-    rooms.forEach(room => {
-        io.to(room.roomID).emit('updateRoom', { id: room.roomID, users: Object.fromEntries(room.users) });
-    });
+    for (const [key, value] of rooms) {
+        io.to(key).emit('updateRoom', { id: key, users: Object.fromEntries(value.users) });
+    }
 }
 
 setInterval(() => {
