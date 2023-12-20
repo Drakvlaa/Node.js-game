@@ -14,7 +14,6 @@ app.use(cookieParser());
 
 app.get('/', (req, res) => {
     if (!req.cookies.id) res.cookie("id", nanoid(), { expire: 360000 + Date.now() });
-    res.cookie("roomID", nanoid())
     res.sendFile(path.join(__dirname, 'src', 'index.html'));
 });
 
@@ -26,10 +25,9 @@ app.get('/:file', (req, res) => {
 });
 
 app.post('/createRoom', (req, res) => {
-    const roomID = req.cookies.roomID;
+    const roomID = nanoid();
 
     if (rooms.has(roomID)) return
-
 
     const room = {
         users: new Map(),
@@ -44,6 +42,13 @@ app.post('/joinRoom', (req, res) => {
     const socketID = req.body.socketID;
 
     if (!rooms.has(roomID)) return
+
+
+    const user = users.get(socketID)
+    if (user.roomID != '') {
+        io.sockets.sockets.get(socketID).leave(user.roomID)
+        updateRooms(user.roomID);
+    }
 
     const room = rooms.get(roomID);
     room.users.set(socketID, users.get(socketID));
@@ -63,8 +68,6 @@ const rooms = new Map();
 const lobbyMaxSize = 2;
 
 io.on('connection', socket => {
-    //console.log('A user connected');
-
     socket.on('createUser', userID => {
         users.set(socket.id, new User({ userID }))
     })
@@ -74,7 +77,6 @@ io.on('connection', socket => {
 
         const user = users.get(socket.id)
         if (user.roomID != '' && user.roomID != roomID) {
-            //console.log(io.sockets.adapter.rooms.get(user.roomID))
             socket.leave(user.roomID);
             updateRooms(user.roomID);
         }
@@ -99,12 +101,14 @@ const updateRooms = roomID => {
     if (rooms.has(roomID)) {
         const roomUsers = rooms.get(roomID).users
         for (const key of roomUsers.keys()) {
-            if (!users.has(key) || !io.sockets.adapter.rooms.get(roomID)) {
+            if (!users.has(key) || !io.sockets.adapter.rooms.get(roomID) || !io.sockets.adapter.rooms.get(roomID).has(key)) {
                 rooms.get(roomID).users.delete(key)
                 if (roomUsers.size == 0) {
                     rooms.delete(roomID)
                 }
             }
+        }
+        for (const key of roomUsers.keys()) {
             io.to(key).emit('updateRoom', { id: roomID, users: Object.fromEntries(roomUsers) });
         }
     }
