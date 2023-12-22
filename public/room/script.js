@@ -1,21 +1,48 @@
-const socket = io();
+const main = () => {
+	const socket = io('', {
+		transportOptions: {
+			polling: {
+				extraHeaders: {
+					token: sessionStorage.getItem('token'),
+				},
+			},
+		},
+	});
 
-socket.on('connect', () => {
-    socket.emit('joinRoom', roomID)
-})
+	socket.on('connect', () => {
+		socket.emit('joinRoom', roomID);
+	});
 
-socket.on('redirect', src => redirect(src))
+	socket.on('redirect', src => redirect(src));
 
-const redirect = src => location = src
+	socket.on('updateRoom', data => {
+		let playersList = '';
+		for (const id in data.users) {
+			playersList += id + '<br>';
+		}
+		document.getElementById('players').innerHTML = playersList;
+	});
 
-socket.on('updateRoom', data => {
-    let playersList = ""
-    for (const id in data.users) {
-        playersList += id + "<br>"
-    }
-    document.getElementById('players').innerHTML = playersList
-})
+	socket.on('joinGame', roomID => {
+		redirect(`/game/${roomID}`);
+	});
+};
+
+const redirect = src => (location = src);
+
+if (!sessionStorage.getItem('token')) {
+	fetch('/getToken')
+		.then(response => response.json())
+		.then(data => sessionStorage.setItem('token', data.token))
+		.then(() => main());
+} else {
+	main();
+}
 
 document.getElementById('quitRoom').onclick = () => {
-    redirect('/room')
-}
+	redirect('/room');
+};
+
+document.getElementById('startGame').onclick = () => {
+	fetch(`${location.pathname}/startGame`);
+};
