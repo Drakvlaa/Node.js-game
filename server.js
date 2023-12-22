@@ -71,8 +71,8 @@ app.get('/room/:roomID/startGame', (req, res) => {
 	const roomID = req.params.roomID;
 	if (!rooms.has(roomID)) return;
 	const room = rooms.get(roomID);
-	const tokens = room.tokens;
-	games.set(roomID, new Game({ tokens }));
+	const tokens = [...room.tokens];
+	games.set(roomID, new Game({ tokens, id: roomID }));
 
 	for (const key of room.users.keys()) {
 		io.to(key).emit('redirect', `/game/${roomID}`);
@@ -85,7 +85,7 @@ app.get('/game/:gameID', (req, res) => {
 
 	const userToken = req.session.token;
 	if (!games.get(gameID).tokens.includes(userToken)) return res.redirect('/');
-	res.render('game');
+	res.render('game', { gameID });
 });
 
 app.get('/getToken', (req, res) => {
@@ -105,18 +105,37 @@ class User {
 }
 
 class Game {
-	constructor({ tokens = [] }) {
-		this.id = nanoid();
+	constructor({ tokens = [], id }) {
+		this.id = id;
 		this.tokens = tokens;
+		this.timeout;
+		this.timeoutIsSet = false;
+		this.users = new Map();
 	}
 
-	addPlayer(token) {
-		this.tokens.push(token);
+	Update() {
+		if (!this.timeoutIsSet && this.users.size == 0) {
+			this.timeoutIsSet = true;
+
+			this.timeout = setTimeout(() => {
+				games.delete(this.id);
+				console.log('game deleted');
+			}, 5e3);
+		} else if (this.timeoutIsSet && this.users.size > 0) {
+			clearTimeout(this.timeout);
+			this.timeoutIsSet = false;
+		}
 	}
 }
 
 io.on('connection', socket => {
 	socket.token = socket.handshake.headers.token;
+
+	socket.on('joinGame', gameID => {
+		if (!games.has(gameID)) return socket.emit('redirect', '/game');
+		games.get(gameID).users.set(socket.id, new User({ roomID: gameID }));
+		socket.gameID = gameID;
+	});
 
 	socket.on('joinRoom', roomID => {
 		if (!rooms.has(roomID)) return socket.emit('redirect', '/room ');
@@ -133,13 +152,18 @@ io.on('connection', socket => {
 	});
 
 	socket.on('disconnect', () => {
-		if (!users.has(socket.id)) return;
-		const roomID = users.get(socket.id).roomID;
-		const room = rooms.get(roomID);
-		room.users.delete(socket.id);
-		room.tokens.splice(room.tokens.indexOf(socket.token), 1);
-		updateRoom(roomID);
-		users.delete(socket.id);
+		if (users.has(socket.id)) {
+			const roomID = users.get(socket.id).roomID;
+			const room = rooms.get(roomID);
+			room.users.delete(socket.id);
+			room.tokens.splice(room.tokens.indexOf(socket.token), 1);
+			updateRoom(roomID);
+			users.delete(socket.id);
+		}
+
+		if (games.has(socket.gameID)) {
+			games.get(socket.gameID).users.delete(socket.id);
+		}
 	});
 });
 
@@ -155,8 +179,10 @@ const updateRoom = roomID => {
 };
 
 setInterval(() => {
-	//console.log(games);
-}, 1000);
+	for (const game of games.values()) {
+		game.Update();
+	}
+}, 15);
 
 server.listen(3000, () => {
 	console.log('http://localhost:3000');
