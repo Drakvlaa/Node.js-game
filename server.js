@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const http = require('http');
 const { Server } = require('socket.io');
 const { nanoid } = require('nanoid');
@@ -24,6 +25,22 @@ app.use(express.static('public'));
 app.set('views', path.join(__dirname, '/public'));
 app.set('view engine', 'ejs');
 
+app.use(
+	session({
+		secret: 'my-secret', // a secret string used to sign the session ID cookie
+		resave: false, // don't save session if unmodified
+		saveUninitialized: true, // don't create session until something stored
+	}),
+);
+
+app.use((req, res, next) => {
+	if (!req.session.token) {
+		req.session.token = nanoid();
+	}
+
+	next();
+});
+
 app.get('/', (req, res) => {
 	res.render('index');
 });
@@ -38,22 +55,6 @@ app.get('/room/:roomID', (req, res) => {
 	return res.render('room', { roomID });
 });
 
-app.get('/room/:roomID/startGame', (req, res) => {
-	const roomID = req.params.roomID;
-	if (!rooms.has(roomID)) return;
-
-	games.set(roomID, new Game({ tokens: rooms.get(roomID).tokens }));
-
-	for (const key of rooms.get(roomID).users.keys()) {
-		io.to(key).emit('joinGame', roomID);
-	}
-});
-
-app.get('/game/:roomID/', (req, res) => {
-	const roomID = req.params.roomID;
-	res.render('game', { roomID });
-});
-
 app.get('/createRoom', (req, res) => {
 	const roomID = nanoid();
 
@@ -66,8 +67,29 @@ app.get('/createRoom', (req, res) => {
 	res.json({ roomID });
 });
 
+app.get('/room/:roomID/startGame', (req, res) => {
+	const roomID = req.params.roomID;
+	if (!rooms.has(roomID)) return;
+	const room = rooms.get(roomID);
+	const tokens = room.tokens;
+	games.set(roomID, new Game({ tokens }));
+
+	for (const key of room.users.keys()) {
+		io.to(key).emit('redirect', `/game/${roomID}`);
+	}
+});
+
+app.get('/game/:gameID', (req, res) => {
+	const gameID = req.params.gameID;
+	if (!games.has(gameID)) return res.redirect('/');
+
+	const userToken = req.session.token;
+	if (!games.get(gameID).tokens.includes(userToken)) return res.redirect('/');
+	res.render('game');
+});
+
 app.get('/getToken', (req, res) => {
-	const token = nanoid();
+	const token = req.session.token;
 	res.json({ token });
 });
 
@@ -133,7 +155,7 @@ const updateRoom = roomID => {
 };
 
 setInterval(() => {
-	//console.log(rooms);
+	//console.log(games);
 }, 1000);
 
 server.listen(3000, () => {
