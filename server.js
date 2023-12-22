@@ -27,9 +27,9 @@ app.set('view engine', 'ejs');
 
 app.use(
 	session({
-		secret: 'my-secret', // a secret string used to sign the session ID cookie
-		resave: false, // don't save session if unmodified
-		saveUninitialized: true, // don't create session until something stored
+		secret: 'my-secret',
+		resave: false,
+		saveUninitialized: true,
 	}),
 );
 
@@ -97,6 +97,156 @@ app.get('*', function (req, res) {
 	res.redirect('/');
 });
 
+const CollisonAABB = (obj1, obj2) => {
+	return (
+		obj1.position.x < obj2.position.x + obj2.scale.x &&
+		obj1.position.x + obj1.scale > obj2.position.x &&
+		obj1.position.y < obj2.position.y + obj2.scale.y &&
+		obj1.position.y + obj1.scale.y > obj2.position.y
+	);
+};
+
+class GameObject {
+	constructor(components) {
+		this.gameObject = {
+			tag: 'new gameObject',
+		};
+
+		this.components = components;
+
+		for (const name in this.components) {
+			const component = new components[name]();
+			for (const prop in component) {
+				this[prop] = component[prop];
+			}
+		}
+	}
+
+	Destroy(object = this) {
+		allObjects.splice(allObjects.indexOf(object), 1);
+	}
+}
+
+function Transform() {
+	this.transform = {
+		position: {
+			x: 0,
+			y: 0,
+		},
+		scale: {
+			x: 1,
+			y: 1,
+		},
+		anchor: {
+			x: 0,
+			y: 0,
+		},
+		velocity: {
+			x: 0,
+			y: 0,
+		},
+		rotation: {
+			x: 0,
+			y: 0,
+		},
+	};
+}
+
+function BoxCollider() {
+	this.boxCollider = {
+		isTrigger: false,
+	};
+
+	this.OnCollisionEnter = collision => {};
+	this.OnCollisionExit = collision => {};
+	this.OnCollisionStay = collision => {};
+}
+
+class Controller {
+	constructor() {
+		this.classObjects = [];
+	}
+
+	GetClassObjects(name, game) {
+		this.classObjects = [];
+		for (let i = 0; i < game.allObjects.length; ++i) {
+			if (game.allObjects[i].components[name]) this.classObjects.push(game.allObjects[i]);
+		}
+	}
+}
+
+class TransformController extends Controller {
+	constructor() {
+		super();
+	}
+
+	Update(game) {
+		this.GetClassObjects('Transform', game);
+		this.classObjects.forEach(object => {
+			object.transform.position.x += object.transform.velocity.x;
+			object.transform.position.y += object.transform.velocity.y;
+		});
+	}
+}
+
+class BoxColliderController extends Controller {
+	constructor() {
+		super();
+		this.objectsInCollision = [];
+	}
+
+	Update(game) {
+		this.GetClassObjects('BoxCollider', game);
+		for (let i = 0; i < this.classObjects.length; ++i) {
+			for (let j = i + 1; j < this.classObjects.length; ++j) {
+				let index = this.containsArray(this.objectsInCollision, [
+					this.classObjects[i],
+					this.classObjects[j],
+				]);
+				if (CollisonAABB(this.classObjects[i].transform, this.classObjects[j].transform)) {
+					if (index > -1) {
+						this.classObjects[i].OnCollisionStay(this.classObjects[j]);
+						this.classObjects[j].OnCollisionStay(this.classObjects[i]);
+					} else {
+						this.objectsInCollision.push([this.classObjects[i], this.classObjects[j]]);
+						this.classObjects[i].OnCollisionEnter(this.classObjects[j]);
+						this.classObjects[j].OnCollisionEnter(this.classObjects[i]);
+					}
+				} else {
+					if (index > -1) {
+						this.objectsInCollision.splice(index, 1);
+						this.classObjects[i].OnCollisionExit(this.classObjects[j]);
+						this.classObjects[j].OnCollisionExit(this.classObjects[i]);
+					}
+				}
+			}
+		}
+	}
+
+	containsArray(inside, array) {
+		for (let i = 0; i < inside.length; ++i) {
+			if (
+				(array[0] == inside[i][0] && array[1] == inside[i][1]) ||
+				(array[1] == inside[i][0] && array[0] == inside[i][1])
+			) {
+				return i;
+			}
+		}
+		return -1;
+	}
+}
+
+class Player extends GameObject {
+	constructor({ tag }) {
+		super({ Transform, BoxCollider });
+		this.gameObject.tag = tag;
+
+		this.OnCollisionEnter = collision => {
+			console.log('test');
+		};
+	}
+}
+
 class User {
 	constructor({ roomID }) {
 		this.userID = '';
@@ -111,6 +261,8 @@ class Game {
 		this.timeout;
 		this.timeoutIsSet = false;
 		this.users = new Map();
+		this.allObjects = [];
+		this.controllers = [new BoxColliderController(), new TransformController()];
 	}
 
 	Update() {
@@ -119,12 +271,15 @@ class Game {
 
 			this.timeout = setTimeout(() => {
 				games.delete(this.id);
-				console.log('game deleted');
 			}, 5e3);
 		} else if (this.timeoutIsSet && this.users.size > 0) {
 			clearTimeout(this.timeout);
 			this.timeoutIsSet = false;
 		}
+
+		this.controllers.forEach(controller => {
+			controller.Update(this);
+		});
 	}
 }
 
@@ -133,7 +288,7 @@ io.on('connection', socket => {
 
 	socket.on('joinGame', gameID => {
 		if (!games.has(gameID)) return socket.emit('redirect', '/game');
-		games.get(gameID).users.set(socket.id, new User({ roomID: gameID }));
+		games.get(gameID).users.set(socket.id, new Player({ roomID: gameID, tag: socket.id }));
 		socket.gameID = gameID;
 	});
 
