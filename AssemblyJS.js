@@ -28,15 +28,16 @@ class Emitter {
 	}
 }
 
-class Controller {
+class Controller extends Emitter {
 	constructor() {
+		super();
 		this.classObjects = [];
 	}
 
 	GetClassObjects(name, game) {
 		this.classObjects = [];
 		for (let i = 0; i < game.allObjects.length; ++i) {
-			if (game.allObjects[i].components[name]) this.classObjects.push(game.allObjects[i]);
+			if (game.allObjects[i][name]) this.classObjects.push(game.allObjects[i]);
 		}
 	}
 }
@@ -76,9 +77,17 @@ class AssemblyJS extends Emitter {
 				this.tickrate = tickrate;
 				this.allObjects = [];
 
+				this.controllers = [new BoxColliderController(), new TransformController()];
+
 				this.interval = setInterval(() => {
 					this.emit('update');
 				}, this.tickrate);
+
+				this.on('update', () => {
+					for (const controller of this.controllers) {
+						controller.emit('update', this);
+					}
+				});
 
 				this.on('newObject', object => {
 					this.allObjects.push(object);
@@ -118,13 +127,15 @@ class AssemblyJS extends Emitter {
 			}
 		};
 
-		this.BoxColliderController = class BoxColliderController extends Controller {
-			constructor(game) {
+		class BoxColliderController extends Controller {
+			constructor() {
 				super();
 				this.objectsInCollision = [];
 
-				this.on('update', () => {
-					this.GetClassObjects('BoxCollider', game);
+				this.on('update', game => {
+					if (!game) return;
+
+					this.GetClassObjects('boxCollider', game);
 
 					for (let i = 0; i < this.classObjects.length; ++i) {
 						for (let j = i + 1; j < this.classObjects.length; ++j) {
@@ -152,6 +163,43 @@ class AssemblyJS extends Emitter {
 					}
 				});
 			}
+		}
+
+		class TransformController extends Controller {
+			constructor() {
+				super();
+
+				this.on('update', game => {
+					if (!game) return;
+
+					this.GetClassObjects('transform', game);
+					for (const object of this.classObjects) {
+						object.transform.position.x += object.transform.velocity.x;
+						object.transform.position.y += object.transform.velocity.y;
+					}
+				});
+			}
+		}
+
+		const CollisonAABB = (obj1, obj2) => {
+			return (
+				obj1.position.x < obj2.position.x + obj2.scale.x &&
+				obj1.position.x + obj1.scale.x > obj2.position.x &&
+				obj1.position.y < obj2.position.y + obj2.scale.y &&
+				obj1.position.y + obj1.scale.y > obj2.position.y
+			);
+		};
+
+		const containsArray = (inside, array) => {
+			for (let i = 0; i < inside.length; ++i) {
+				if (
+					(array[0] == inside[i][0] && array[1] == inside[i][1]) ||
+					(array[1] == inside[i][0] && array[0] == inside[i][1])
+				) {
+					return i;
+				}
+			}
+			return -1;
 		};
 
 		this.on('newGame', data => {
@@ -162,26 +210,5 @@ class AssemblyJS extends Emitter {
 		});
 	}
 }
-
-const CollisonAABB = (obj1, obj2) => {
-	return (
-		obj1.position.x < obj2.position.x + obj2.scale.x * scale &&
-		obj1.position.x + obj1.scale.x * scale > obj2.position.x &&
-		obj1.position.y < obj2.position.y + obj2.scale.y * scale &&
-		obj1.position.y + obj1.scale.y * scale > obj2.position.y
-	);
-};
-
-const containsArray = (inside, array) => {
-	for (let i = 0; i < inside.length; ++i) {
-		if (
-			(array[0] == inside[i][0] && array[1] == inside[i][1]) ||
-			(array[1] == inside[i][0] && array[0] == inside[i][1])
-		) {
-			return i;
-		}
-	}
-	return -1;
-};
 
 module.exports = AssemblyJS;
