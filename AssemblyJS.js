@@ -1,3 +1,5 @@
+const { nanoid } = require('nanoid');
+
 class Emitter {
 	constructor() {
 		this.events = {};
@@ -36,8 +38,8 @@ class Controller extends Emitter {
 
 	GetClassObjects(name, game) {
 		this.classObjects = [];
-		for (let i = 0; i < game.allObjects.length; ++i) {
-			if (game.allObjects[i][name]) this.classObjects.push(game.allObjects[i]);
+		for (const object of game.allObjects.values()) {
+			if (object[name]) this.classObjects.push(object);
 		}
 	}
 }
@@ -48,10 +50,11 @@ class AssemblyJS extends Emitter {
 		this.games = [];
 
 		this.GameObject = class GameObject extends Emitter {
-			constructor(components) {
+			constructor(components, id) {
 				super();
 				this.gameObject = {
 					tag: 'new gameObject',
+					id: id || nanoid(),
 				};
 				this.game = {};
 
@@ -65,7 +68,7 @@ class AssemblyJS extends Emitter {
 				}
 
 				this.on('destroy', (object = this) => {
-					this.game.allObjects.splice(this.game.allObjects.indexOf(object), 1);
+					this.game.allObjects.delete(object.id);
 				});
 			}
 		};
@@ -75,7 +78,7 @@ class AssemblyJS extends Emitter {
 				super();
 				this.id = id;
 				this.tickrate = tickrate;
-				this.allObjects = [];
+				this.allObjects = new Map();
 
 				this.controllers = [new BoxColliderController(), new TransformController()];
 
@@ -88,9 +91,23 @@ class AssemblyJS extends Emitter {
 						controller.emit('update', this);
 					}
 				});
-
+				/*
+				this.on('addData', data => {
+					for (const prop in data) {
+						if (typeof data[prop] != 'object') {
+							this[prop] = data[prop];
+						} else if (!this[prop]) {
+							this[prop] = data[prop];
+						} else if (Array.isArray(data[prop])) {
+							this[prop] = this[prop].concat(data[prop]);
+						} else {
+							Object.assign(this[prop], data[prop]);
+						}
+					}
+				});
+				*/
 				this.on('newObject', object => {
-					this.allObjects.push(object);
+					this.allObjects.set(object.gameObject.id, object);
 					object.game = this;
 				});
 			}
